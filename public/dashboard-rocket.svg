@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="180" height="240" viewBox="0 0 180 240" fill="none">
+  <defs>
+    <linearGradient id="body" x1="53" y1="60" x2="129" y2="162" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFF"/>
+      <stop offset="1" stop-color="#DCE8FF"/>
+    </linearGradient>
+    <linearGradient id="fin" x1="46" y1="132" x2="82" y2="179" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FF7788"/>
+      <stop offset="1" stop-color="#F04462"/>
+    </linearGradient>
+    <linearGradient id="flame" x1="88" y1="153" x2="90" y2="222" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFE08A"/>
+      <stop offset=".55" stop-color="#FF9E52"/>
+      <stop offset="1" stop-color="#FF6478" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="shadow" x="25" y="16" width="135" height="200" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse">
+      <feGaussianBlur stdDeviation="10"/>
+    </filter>
+  </defs>
+  <ellipse cx="91" cy="119" fill="#07152F" fill-opacity=".28" rx="42" ry="82" transform="rotate(24 91 119)" filter="url(#shadow)"/>
+  <g transform="rotate(20 90 120)">
+    <path d="M90 25C67 48 55 79 55 120c0 24 10 47 21 65h28c11-18 21-41 21-65 0-41-12-72-35-95Z" fill="url(#body)" stroke="#BBD0FA" stroke-width="3"/>
+    <path d="M90 25c10 10 18 22 24 36H66c6-14 14-26 24-36Z" fill="#FF6478"/>
+    <path d="M57 105 34 148l25 10c-3-16-3-34-2-53Zm66 0 23 43-25 10c3-16 3-34 2-53Z" fill="url(#fin)"/>
+    <path d="M80 182h20l-10 39-10-39Z" fill="url(#flame)"/>
+    <circle cx="90" cy="107" r="17" fill="#3678EF" stroke="#172B55" stroke-width="5"/>
+    <circle cx="84" cy="101" r="5" fill="#C8E7FF"/>
+    <path d="M80 170h20" stroke="#8EA8D4" stroke-linecap="round" stroke-width="4"/>
+    <path d="M83 187c2 10 4 18 7 25 3-7 5-15 7-25H83Z" fill="#FFC45C"/>
+  </g>
+</svg>

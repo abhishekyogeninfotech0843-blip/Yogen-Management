@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="420" height="320" viewBox="0 0 420 320" fill="none">
+  <defs>
+    <linearGradient id="glass" x1="160" y1="32" x2="352" y2="194" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#BBD3FF"/>
+      <stop offset="1" stop-color="#E3EDFF"/>
+    </linearGradient>
+    <linearGradient id="desk" x1="31" y1="233" x2="386" y2="282" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#8EB3F3"/>
+      <stop offset="1" stop-color="#C6D9FA"/>
+    </linearGradient>
+  </defs>
+  <rect x="139" y="24" width="220" height="168" rx="18" fill="url(#glass)"/>
+  <path d="M249 24v168M139 108h220" stroke="#fff" stroke-width="8" stroke-linecap="round"/>
+  <path d="M157 89c19-20 39-20 58 0m51 49c18-19 36-19 54 0" stroke="#fff" stroke-opacity=".75" stroke-width="7" stroke-linecap="round"/>
+  <path d="M38 233h348l-19 24H55l-17-24Z" fill="url(#desk)"/>
+  <path d="M72 257v38m268-38v38" stroke="#A7BDE2" stroke-width="10" stroke-linecap="round"/>
+  <path d="M101 225c-12-31-7-62 14-83 3 29-2 56-14 83Zm21-2c-2-38 12-66 41-82-4 36-18 64-41 82Zm-39-6c-21-25-27-52-17-82 18 26 24 53 17 82Z" fill="#91BDAE"/>
+  <path d="M76 215h65l-8 31H84l-8-31Z" fill="#B8A7E6"/>
+  <rect x="186" y="203" width="79" height="24" rx="7" fill="#D9E5FA"/>
+  <path d="M198 203v-20h55v20" stroke="#A9BDE1" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
