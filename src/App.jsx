@@ -122,7 +122,61 @@ function StatCard({ title, value, detail, icon = "📊", onClick }) {
   );
 }
 
+function TablePagination({ itemCount, page, pageSize, onPageChange }) {
+  const pageCount = Math.ceil(itemCount / pageSize);
+  if (pageCount <= 1) return null;
+
+  const firstVisiblePage = Math.max(1, Math.min(page - 2, pageCount - 4));
+  const visiblePages = Array.from(
+    { length: Math.min(5, pageCount) },
+    (_, index) => firstVisiblePage + index,
+  );
+
+  return (
+    <nav className="table-pagination" aria-label="Table pagination">
+      <span className="pagination-summary">
+        Showing {(page - 1) * pageSize + 1}–
+        {Math.min(page * pageSize, itemCount)} of {itemCount} records
+      </span>
+      <div className="pagination-controls">
+        <button
+          className="pagination-button"
+          type="button"
+          onClick={() => onPageChange(page - 1)}
+          disabled={page === 1}
+          aria-label="Previous page"
+        >
+          Previous
+        </button>
+        {visiblePages.map((pageNumber) => (
+          <button
+            className={`pagination-button pagination-number${pageNumber === page ? " active" : ""}`}
+            type="button"
+            key={pageNumber}
+            onClick={() => onPageChange(pageNumber)}
+            aria-label={`Page ${pageNumber}`}
+            aria-current={pageNumber === page ? "page" : undefined}
+          >
+            {pageNumber}
+          </button>
+        ))}
+        <button
+          className="pagination-button"
+          type="button"
+          onClick={() => onPageChange(page + 1)}
+          disabled={page === pageCount}
+          aria-label="Next page"
+        >
+          Next
+        </button>
+      </div>
+    </nav>
+  );
+}
+
 export default function App() {
+  const tablePageSize = 10;
+  const [tablePages, setTablePages] = useState({});
   const [activePage, setActivePage] = useState("Dashboard");
   const [databaseStatus, setDatabaseStatus] = useState("connecting");
   const [databaseReady, setDatabaseReady] = useState(false);
@@ -135,6 +189,10 @@ export default function App() {
   const [employeeName, setEmployeeName] = useState("");
   const [employeeSalary, setEmployeeSalary] = useState("");
   const [employeeRole, setEmployeeRole] = useState("Employee");
+  const [editingEmployeeId, setEditingEmployeeId] = useState(null);
+  const [editedEmployeeName, setEditedEmployeeName] = useState("");
+  const [editedEmployeeSalary, setEditedEmployeeSalary] = useState("");
+  const [editedEmployeeRole, setEditedEmployeeRole] = useState("Employee");
 
   // ATTENDANCE: Existing storage key preserved.
   const [attendance, setAttendance] = useState(() =>
@@ -143,6 +201,8 @@ export default function App() {
   const [attendanceDate, setAttendanceDate] = useState(getTodayDate());
   const [attendanceReportMonth, setAttendanceReportMonth] =
     useState(currentMonth());
+  const [attendanceReportEmployeeId, setAttendanceReportEmployeeId] =
+    useState("");
   const [attendanceSearch, setAttendanceSearch] = useState("");
 
   // OFFICE EXPENSES: Existing storage key preserved.
@@ -296,6 +356,28 @@ export default function App() {
     });
   }
 
+  function getTablePage(items, key) {
+    const pageCount = Math.max(1, Math.ceil(items.length / tablePageSize));
+    const page = Math.min(tablePages[key] || 1, pageCount);
+    return items.slice((page - 1) * tablePageSize, page * tablePageSize);
+  }
+
+  function renderTablePagination(items, key) {
+    const pageCount = Math.max(1, Math.ceil(items.length / tablePageSize));
+    const page = Math.min(tablePages[key] || 1, pageCount);
+
+    return (
+      <TablePagination
+        itemCount={items.length}
+        page={page}
+        pageSize={tablePageSize}
+        onPageChange={(nextPage) =>
+          setTablePages((previous) => ({ ...previous, [key]: nextPage }))
+        }
+      />
+    );
+  }
+
   const monthlyAttendanceReport = useMemo(() => {
     const reportByEmployee = new Map(
       employees.map((employee) => [
@@ -345,6 +427,60 @@ export default function App() {
       employees: [...reportByEmployee.values()],
     };
   }, [attendance, attendanceReportMonth, employees]);
+
+  const selectedAttendanceReport = useMemo(() => {
+    const employee = employees.find(
+      (item) => String(item.id) === attendanceReportEmployeeId,
+    );
+    if (!employee) return null;
+
+    const [year, month] = attendanceReportMonth.split("-").map(Number);
+    const daysInMonth = new Date(year, month, 0).getDate();
+    const days = Array.from({ length: daysInMonth }, (_, index) => {
+      const date = `${attendanceReportMonth}-${String(index + 1).padStart(2, "0")}`;
+      const dailyAttendance = attendance[date] || {};
+      const status = dailyAttendance[employee.id] || "Not marked";
+      const reason = dailyAttendance.__reasons?.[employee.id] || "";
+
+      return {
+        date,
+        status,
+        reason:
+          status === "Absent"
+            ? reason || "Reason not recorded"
+            : status === "Not marked"
+              ? "Attendance not recorded"
+              : status,
+      };
+    });
+
+    const counts = days.reduce(
+      (result, day) => {
+        if (day.status === "Present") result.present += 1;
+        if (day.status === "WFH") result.wfh += 1;
+        if (day.status === "Absent") result.absent += 1;
+        if (day.status === "Casual Leave" || day.status === "Sick Leave") {
+          result.leave += 1;
+        }
+        if (day.status === "Holiday") result.holidays += 1;
+        if (day.status === "Not marked") result.notMarked += 1;
+        return result;
+      },
+      { present: 0, wfh: 0, absent: 0, leave: 0, holidays: 0, notMarked: 0 },
+    );
+
+    return { employee, days, counts };
+  }, [attendance, attendanceReportEmployeeId, attendanceReportMonth, employees]);
+
+  const visibleMonthlyAttendanceReports = monthlyAttendanceReport.employees.filter(
+    (report) =>
+      !attendanceReportEmployeeId ||
+      String(report.employee.id) === attendanceReportEmployeeId,
+  );
+  const attendanceReportMarkedDays = selectedAttendanceReport
+    ? selectedAttendanceReport.days.filter((day) => day.status !== "Not marked")
+        .length
+    : monthlyAttendanceReport.recordedDates.length;
 
   const filteredEmployees = employees.filter((employee) =>
     employee.name.toLowerCase().includes(employeeSearch.toLowerCase()),
@@ -469,6 +605,13 @@ export default function App() {
     };
 
     setEmployees((previous) => [...previous, employee]);
+    setTablePages((previous) => ({
+      ...previous,
+      employees: 1,
+      payroll: 1,
+      attendance: 1,
+      "attendance-report": 1,
+    }));
     setEmployeeName("");
     setEmployeeSalary("");
     setEmployeeRole("Employee");
@@ -482,23 +625,113 @@ export default function App() {
     setEmployees((previous) => previous.filter((item) => item.id !== id));
   }
 
+  function startEmployeeEdit(employee) {
+    setEditingEmployeeId(employee.id);
+    setEditedEmployeeName(employee.name);
+    setEditedEmployeeSalary(String(employee.salary ?? ""));
+    setEditedEmployeeRole(employee.role || "Employee");
+  }
+
+  function cancelEmployeeEdit() {
+    setEditingEmployeeId(null);
+    setEditedEmployeeName("");
+    setEditedEmployeeSalary("");
+    setEditedEmployeeRole("Employee");
+  }
+
+  function saveEmployeeEdit(id) {
+    const name = editedEmployeeName.trim();
+    const salary = Number(editedEmployeeSalary);
+
+    if (!name || editedEmployeeSalary.trim() === "") {
+      alert("Employee name aur salary fill karo.");
+      return;
+    }
+
+    if (!Number.isFinite(salary) || salary < 0) {
+      alert("Salary valid honi chahiye aur negative nahi ho sakti.");
+      return;
+    }
+
+    setEmployees((previous) =>
+      previous.map((employee) =>
+        employee.id === id
+          ? { ...employee, name, salary, role: editedEmployeeRole }
+          : employee,
+      ),
+    );
+    cancelEmployeeEdit();
+  }
+
   function updateAttendance(employeeId, status) {
-    setAttendance((previous) => ({
-      ...previous,
-      [attendanceDate]: {
-        ...(previous[attendanceDate] || {}),
-        [employeeId]: status,
-      },
-    }));
+    setAttendance((previous) => {
+      const currentDay = { ...(previous[attendanceDate] || {}) };
+      const reasons = { ...(currentDay.__reasons || {}) };
+
+      if (status) {
+        currentDay[employeeId] = status;
+      } else {
+        delete currentDay[employeeId];
+      }
+
+      if (status !== "Absent") {
+        delete reasons[employeeId];
+      }
+
+      if (Object.keys(reasons).length) {
+        currentDay.__reasons = reasons;
+      } else {
+        delete currentDay.__reasons;
+      }
+
+      if (!Object.keys(currentDay).length) {
+        const updated = { ...previous };
+        delete updated[attendanceDate];
+        return updated;
+      }
+
+      return { ...previous, [attendanceDate]: currentDay };
+    });
+  }
+
+  function updateAttendanceReason(employeeId, reason) {
+    setAttendance((previous) => {
+      const currentDay = { ...(previous[attendanceDate] || {}) };
+      const reasons = { ...(currentDay.__reasons || {}) };
+
+      if (reason.trim()) {
+        reasons[employeeId] = reason;
+      } else {
+        delete reasons[employeeId];
+      }
+
+      if (Object.keys(reasons).length) {
+        currentDay.__reasons = reasons;
+      } else {
+        delete currentDay.__reasons;
+      }
+
+      return { ...previous, [attendanceDate]: currentDay };
+    });
   }
 
   function markAllPresent() {
     setAttendance((previous) => {
-      const current = { ...(previous[attendanceDate] || {}) };
+      const current = {
+        ...(previous[attendanceDate] || {}),
+        __reasons: {
+          ...(previous[attendanceDate]?.__reasons || {}),
+        },
+      };
 
       employees.forEach((employee) => {
         current[employee.id] = "Present";
+        if (current.__reasons) delete current.__reasons[employee.id];
       });
+
+      if (current.__reasons && !Object.keys(current.__reasons).length) {
+        delete current.__reasons;
+      }
 
       return { ...previous, [attendanceDate]: current };
     });
@@ -531,6 +764,11 @@ export default function App() {
     };
 
     setExpenses((previous) => [expense, ...previous]);
+    setTablePages((previous) => ({
+      ...previous,
+      expenses: 1,
+      "monthly-expenses": 1,
+    }));
     setExpenseAmount("");
     setExpenseDescription("");
     setExpenseMonth(expenseDate.slice(0, 7));
@@ -579,6 +817,11 @@ export default function App() {
     };
 
     setClients((previous) => [client, ...previous]);
+    setTablePages((previous) => ({
+      ...previous,
+      clients: 1,
+      "client-payment-summary": 1,
+    }));
 
     setClientName("");
     setClientCompany("");
@@ -1012,7 +1255,7 @@ export default function App() {
         )}
 
         {activePage === "Employees" && (
-          <section className="page-content">
+          <section className="page-content module-page">
             <div className="stats-grid">
               <StatCard
                 title="Total Employees"
@@ -1081,7 +1324,10 @@ export default function App() {
                 <input
                   className="search-input"
                   value={employeeSearch}
-                  onChange={(event) => setEmployeeSearch(event.target.value)}
+                  onChange={(event) => {
+                    setEmployeeSearch(event.target.value);
+                    setTablePages((previous) => ({ ...previous, employees: 1 }));
+                  }}
                   placeholder="Search employee..."
                 />
               </div>
@@ -1100,21 +1346,103 @@ export default function App() {
                     {filteredEmployees.map((employee) => (
                       <tr key={employee.id}>
                         <td>
-                          <strong>{employee.name}</strong>
+                          {editingEmployeeId === employee.id ? (
+                            <input
+                              className="employee-edit-input"
+                              aria-label={`Edit ${employee.name} name`}
+                              value={editedEmployeeName}
+                              onChange={(event) =>
+                                setEditedEmployeeName(event.target.value)
+                              }
+                            />
+                          ) : (
+                            <strong>{employee.name}</strong>
+                          )}
                         </td>
-                        <td>{employee.role || "Employee"}</td>
-                        <td>{formatMoney(employee.salary)}</td>
                         <td>
-                          {formatMoney(Number(employee.salary || 0) * 12)}
+                          {editingEmployeeId === employee.id ? (
+                            <select
+                              className="employee-edit-input"
+                              aria-label={`Edit ${employee.name} role`}
+                              value={editedEmployeeRole}
+                              onChange={(event) =>
+                                setEditedEmployeeRole(event.target.value)
+                              }
+                            >
+                              <option>Employee</option>
+                              <option>Manager</option>
+                              <option>Admin</option>
+                              <option>Developer</option>
+                              <option>Designer</option>
+                            </select>
+                          ) : (
+                            employee.role || "Employee"
+                          )}
                         </td>
                         <td>
-                          <button
-                            className="danger-button"
-                            type="button"
-                            onClick={() => deleteEmployee(employee.id)}
-                          >
-                            Delete
-                          </button>
+                          {editingEmployeeId === employee.id ? (
+                            <input
+                              className="employee-edit-input salary-edit-input"
+                              aria-label={`Edit ${employee.name} monthly salary`}
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={editedEmployeeSalary}
+                              onChange={(event) =>
+                                setEditedEmployeeSalary(event.target.value)
+                              }
+                            />
+                          ) : (
+                            formatMoney(employee.salary)
+                          )}
+                        </td>
+                        <td>
+                          {formatMoney(
+                            (editingEmployeeId === employee.id
+                              ? Number(editedEmployeeSalary)
+                              : Number(employee.salary)) * 12 || 0,
+                          )}
+                        </td>
+                        <td>
+                          <div className="table-actions employee-row-actions">
+                            {editingEmployeeId === employee.id ? (
+                              <>
+                                <button
+                                  className="primary-button"
+                                  type="button"
+                                  onClick={() => saveEmployeeEdit(employee.id)}
+                                >
+                                  Save
+                                </button>
+                                <button
+                                  className="secondary-button"
+                                  type="button"
+                                  onClick={cancelEmployeeEdit}
+                                >
+                                  Cancel
+                                </button>
+                              </>
+                            ) : (
+                              <>
+                                <button
+                                  className="secondary-button"
+                                  type="button"
+                                  onClick={() => startEmployeeEdit(employee)}
+                                  aria-label={`Edit ${employee.name}`}
+                                >
+                                  Edit
+                                </button>
+                                <button
+                                  className="danger-button"
+                                  type="button"
+                                  onClick={() => deleteEmployee(employee.id)}
+                                  aria-label={`Delete ${employee.name}`}
+                                >
+                                  Delete
+                                </button>
+                              </>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -1126,12 +1454,13 @@ export default function App() {
                   </tbody>
                 </table>
               </div>
+              {renderTablePagination(filteredEmployees, "employees")}
             </div>
           </section>
         )}
 
         {activePage === "Attendance" && (
-          <section className="page-content">
+          <section className="page-content module-page">
             <div className="stats-grid">
               <StatCard
                 title="Total Employees"
@@ -1183,7 +1512,10 @@ export default function App() {
                 <input
                   className="search-input"
                   value={attendanceSearch}
-                  onChange={(event) => setAttendanceSearch(event.target.value)}
+                  onChange={(event) => {
+                    setAttendanceSearch(event.target.value);
+                    setTablePages((previous) => ({ ...previous, attendance: 1 }));
+                  }}
                   placeholder="Search employee..."
                 />
               </div>
@@ -1193,10 +1525,12 @@ export default function App() {
                     <tr>
                       <th>Employee</th>
                       <th>Attendance Status</th>
+                      <th>Reason (when absent)</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredAttendanceEmployees.map((employee) => (
+                    {getTablePage(filteredAttendanceEmployees, "attendance").map(
+                      (employee) => (
                       <tr key={employee.id}>
                         <td>
                           <strong>{employee.name}</strong>
@@ -1215,22 +1549,49 @@ export default function App() {
                             ))}
                           </select>
                         </td>
+                        <td>
+                          {attendanceForDate[employee.id] === "Absent" ? (
+                            <input
+                              className="attendance-reason-input"
+                              value={
+                                attendanceForDate.__reasons?.[employee.id] || ""
+                              }
+                              onChange={(event) =>
+                                updateAttendanceReason(
+                                  employee.id,
+                                  event.target.value,
+                                )
+                              }
+                              placeholder="Reason for absence"
+                              aria-label={`${employee.name} absence reason`}
+                            />
+                          ) : (
+                            <span className="attendance-reason-placeholder">
+                              —
+                            </span>
+                          )}
+                        </td>
                       </tr>
-                    ))}
+                      ),
+                    )}
                     {!filteredAttendanceEmployees.length && (
                       <tr>
-                        <td colSpan="2">No employees found.</td>
+                        <td colSpan="3">No employees found.</td>
                       </tr>
                     )}
                   </tbody>
                 </table>
               </div>
+              {renderTablePagination(
+                filteredAttendanceEmployees,
+                "attendance",
+              )}
             </div>
           </section>
         )}
 
         {activePage === "Salary & Payroll" && (
-          <section className="page-content">
+          <section className="page-content module-page">
             <div className="stats-grid">
               <StatCard
                 title="Monthly Payroll"
@@ -1268,7 +1629,7 @@ export default function App() {
                     </tr>
                   </thead>
                   <tbody>
-                    {employees.map((employee) => (
+                    {getTablePage(employees, "payroll").map((employee) => (
                       <tr key={employee.id}>
                         <td>
                           <strong>{employee.name}</strong>
@@ -1293,12 +1654,13 @@ export default function App() {
                   </tbody>
                 </table>
               </div>
+              {renderTablePagination(employees, "payroll")}
             </div>
           </section>
         )}
 
         {activePage === "Office Expenses" && (
-          <section className="page-content">
+          <section className="page-content module-page">
             <div className="stats-grid">
               <StatCard
                 title="This Month's Expenses"
@@ -1373,14 +1735,24 @@ export default function App() {
                 <input
                   type="month"
                   value={expenseMonth}
-                  onChange={(event) => setExpenseMonth(event.target.value)}
+                  onChange={(event) => {
+                    setExpenseMonth(event.target.value);
+                    setTablePages((previous) => ({
+                      ...previous,
+                      expenses: 1,
+                      "monthly-expenses": 1,
+                    }));
+                  }}
                 />
               </div>
               <div className="attendance-actions">
                 <input
                   className="search-input"
                   value={expenseSearch}
-                  onChange={(event) => setExpenseSearch(event.target.value)}
+                  onChange={(event) => {
+                    setExpenseSearch(event.target.value);
+                    setTablePages((previous) => ({ ...previous, expenses: 1 }));
+                  }}
                   placeholder="Search category or description..."
                 />
                 <strong>
@@ -1399,7 +1771,7 @@ export default function App() {
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredExpenses.map((expense) => (
+                    {getTablePage(filteredExpenses, "expenses").map((expense) => (
                       <tr key={expense.id}>
                         <td>{expense.date}</td>
                         <td>{expense.category}</td>
@@ -1424,12 +1796,13 @@ export default function App() {
                   </tbody>
                 </table>
               </div>
+              {renderTablePagination(filteredExpenses, "expenses")}
             </div>
           </section>
         )}
 
         {activePage === "Clients & Payments" && (
-          <section className="page-content">
+          <section className="page-content module-page">
             <div className="stats-grid">
               <StatCard
                 title="Total Clients / Projects"
@@ -1578,12 +1951,18 @@ export default function App() {
                 <input
                   className="search-input"
                   value={clientSearch}
-                  onChange={(event) => setClientSearch(event.target.value)}
+                  onChange={(event) => {
+                    setClientSearch(event.target.value);
+                    setTablePages((previous) => ({ ...previous, clients: 1 }));
+                  }}
                   placeholder="Search name, company, phone, project..."
                 />
                 <select
                   value={clientMonth}
-                  onChange={(event) => setClientMonth(event.target.value)}
+                  onChange={(event) => {
+                    setClientMonth(event.target.value);
+                    setTablePages((previous) => ({ ...previous, clients: 1 }));
+                  }}
                 >
                   <option value="All">All Months</option>
                   {Array.from({ length: 24 }, (_, index) => {
@@ -1601,7 +1980,13 @@ export default function App() {
                 <select
                   value={paymentClientFilter}
                   onChange={(event) =>
-                    setPaymentClientFilter(event.target.value)
+                    {
+                      setPaymentClientFilter(event.target.value);
+                      setTablePages((previous) => ({
+                        ...previous,
+                        clients: 1,
+                      }));
+                    }
                   }
                 >
                   <option>All</option>
@@ -1663,7 +2048,7 @@ export default function App() {
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredClients.map((client) => (
+                    {getTablePage(filteredClients, "clients").map((client) => (
                       <tr key={client.id}>
                         <td>
                           <strong>{client.name}</strong>
@@ -1733,6 +2118,7 @@ export default function App() {
                   </tbody>
                 </table>
               </div>
+              {renderTablePagination(filteredClients, "clients")}
             </div>
 
             <div className="panel">
@@ -1746,7 +2132,10 @@ export default function App() {
                 <input
                   type="month"
                   value={clientMonth === "All" ? currentMonth() : clientMonth}
-                  onChange={(event) => setClientMonth(event.target.value)}
+                  onChange={(event) => {
+                    setClientMonth(event.target.value);
+                    setTablePages((previous) => ({ ...previous, clients: 1 }));
+                  }}
                 />
               </div>
               <div className="stats-grid">
@@ -1774,7 +2163,7 @@ export default function App() {
         )}
 
         {activePage === "Reports" && (
-          <section className="page-content">
+          <section className="page-content module-page">
             <div className="panel">
               <div className="panel-header">
                 <div>
@@ -1839,8 +2228,8 @@ export default function App() {
                 <div>
                   <h3>Monthly Attendance Report</h3>
                   <p>
-                    Present, absent, work-from-home and leave totals for each
-                    employee. Only dates with saved attendance are counted.
+                    Select an employee to filter their monthly totals and view
+                    the complete day-by-day attendance history.
                   </p>
                 </div>
                 <label className="report-month-control">
@@ -1849,15 +2238,45 @@ export default function App() {
                     type="month"
                     value={attendanceReportMonth}
                     onChange={(event) =>
-                      setAttendanceReportMonth(event.target.value)
+                      {
+                        setAttendanceReportMonth(event.target.value);
+                        setTablePages((previous) => ({
+                          ...previous,
+                          "attendance-report": 1,
+                          "employee-attendance-details": 1,
+                        }));
+                      }
                     }
                   />
                 </label>
+                <label className="report-employee-control">
+                  <span>Filter employee</span>
+                  <select
+                    value={attendanceReportEmployeeId}
+                    onChange={(event) =>
+                      {
+                        setAttendanceReportEmployeeId(event.target.value);
+                        setTablePages((previous) => ({
+                          ...previous,
+                          "attendance-report": 1,
+                          "employee-attendance-details": 1,
+                        }));
+                      }
+                    }
+                  >
+                    <option value="">Select an employee</option>
+                    {employees.map((employee) => (
+                      <option key={employee.id} value={String(employee.id)}>
+                        {employee.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
               </div>
               <div className="attendance-report-meta">
-                {monthlyAttendanceReport.recordedDates.length} date
-                {monthlyAttendanceReport.recordedDates.length === 1 ? "" : "s"}{" "}
-                with saved attendance
+                {attendanceReportEmployeeId
+                  ? `${attendanceReportMarkedDays} marked day${attendanceReportMarkedDays === 1 ? "" : "s"} for ${selectedAttendanceReport?.employee.name || "the selected employee"}`
+                  : `${attendanceReportMarkedDays} date${attendanceReportMarkedDays === 1 ? "" : "s"} with saved attendance`}
               </div>
               <div className="table-wrapper">
                 <table className="attendance-report-table">
@@ -1875,7 +2294,10 @@ export default function App() {
                     </tr>
                   </thead>
                   <tbody>
-                    {monthlyAttendanceReport.employees.map((report) => (
+                    {getTablePage(
+                      visibleMonthlyAttendanceReports,
+                      "attendance-report",
+                    ).map((report) => (
                       <tr key={report.employee.id}>
                         <td>
                           <strong>{report.employee.name}</strong>
@@ -1920,23 +2342,113 @@ export default function App() {
                         </td>
                       </tr>
                     ))}
-                    {!monthlyAttendanceReport.employees.length && (
+                    {!visibleMonthlyAttendanceReports.length && (
                       <tr>
                         <td colSpan="9">No employees available for this report.</td>
                       </tr>
                     )}
-                    {monthlyAttendanceReport.employees.length > 0 &&
-                      monthlyAttendanceReport.recordedDates.length === 0 && (
-                        <tr>
-                          <td colSpan="9">
-                            No attendance has been marked for this month yet.
-                          </td>
-                        </tr>
-                      )}
                   </tbody>
                 </table>
               </div>
+              {renderTablePagination(
+                visibleMonthlyAttendanceReports,
+                "attendance-report",
+              )}
             </div>
+
+            {selectedAttendanceReport && (
+              <div
+                className="panel employee-attendance-detail"
+                id="selected-employee-daily-details"
+              >
+                <div className="panel-header">
+                  <div>
+                    <h3>{selectedAttendanceReport.employee.name} · Daily Report</h3>
+                    <p>
+                      {attendanceReportMonth} attendance for every calendar
+                      day. Unmarked dates are kept separate from absences.
+                    </p>
+                  </div>
+                  <span className="attendance-report-month-label">
+                    {attendanceReportMonth}
+                  </span>
+                </div>
+                <div className="attendance-detail-stats">
+                  <div>
+                    <strong>{selectedAttendanceReport.counts.present}</strong>
+                    <span>Present</span>
+                  </div>
+                  <div>
+                    <strong>{selectedAttendanceReport.counts.wfh}</strong>
+                    <span>Work from home</span>
+                  </div>
+                  <div>
+                    <strong>{selectedAttendanceReport.counts.absent}</strong>
+                    <span>Absent</span>
+                  </div>
+                  <div>
+                    <strong>{selectedAttendanceReport.counts.leave}</strong>
+                    <span>Leave</span>
+                  </div>
+                  <div>
+                    <strong>{selectedAttendanceReport.counts.holidays}</strong>
+                    <span>Holiday</span>
+                  </div>
+                  <div>
+                    <strong>{selectedAttendanceReport.counts.notMarked}</strong>
+                    <span>Not marked</span>
+                  </div>
+                </div>
+                <div className="table-wrapper">
+                  <table className="employee-daily-attendance-table">
+                    <thead>
+                      <tr>
+                        <th>Date</th>
+                        <th>Day</th>
+                        <th>Attendance</th>
+                        <th>Reason / Details</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {getTablePage(
+                        selectedAttendanceReport.days,
+                        "employee-attendance-details",
+                      ).map((day) => (
+                        <tr key={day.date}>
+                          <td>{day.date}</td>
+                          <td>
+                            {new Date(`${day.date}T00:00:00`).toLocaleDateString(
+                              "en-IN",
+                              { weekday: "long" },
+                            )}
+                          </td>
+                          <td>
+                            <span
+                              className={`attendance-day-status ${day.status.toLowerCase().replaceAll(" ", "-")}`}
+                            >
+                              {day.status}
+                            </span>
+                          </td>
+                          <td
+                            className={
+                              day.status === "Not marked"
+                                ? "attendance-unmarked-note"
+                                : ""
+                            }
+                          >
+                            {day.reason}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {renderTablePagination(
+                  selectedAttendanceReport.days,
+                  "employee-attendance-details",
+                )}
+              </div>
+            )}
 
             <div className="panel" id="monthly-expense-report">
               <div className="panel-header">
@@ -1947,7 +2459,13 @@ export default function App() {
                 <input
                   type="month"
                   value={expenseMonth}
-                  onChange={(event) => setExpenseMonth(event.target.value)}
+                  onChange={(event) => {
+                    setExpenseMonth(event.target.value);
+                    setTablePages((previous) => ({
+                      ...previous,
+                      "monthly-expenses": 1,
+                    }));
+                  }}
                 />
               </div>
               <div className="table-wrapper">
@@ -1961,14 +2479,16 @@ export default function App() {
                     </tr>
                   </thead>
                   <tbody>
-                    {monthlyExpenses.map((expense) => (
+                    {getTablePage(monthlyExpenses, "monthly-expenses").map(
+                      (expense) => (
                       <tr key={expense.id}>
                         <td>{expense.date}</td>
                         <td>{expense.category}</td>
                         <td>{expense.description || "—"}</td>
                         <td>{formatMoney(expense.amount)}</td>
                       </tr>
-                    ))}
+                      ),
+                    )}
                     {!monthlyExpenses.length && (
                       <tr>
                         <td colSpan="4">
@@ -1987,6 +2507,7 @@ export default function App() {
                   </tbody>
                 </table>
               </div>
+              {renderTablePagination(monthlyExpenses, "monthly-expenses")}
             </div>
 
             <div className="panel">
@@ -2009,7 +2530,8 @@ export default function App() {
                     </tr>
                   </thead>
                   <tbody>
-                    {clients.map((client) => (
+                    {getTablePage(clients, "client-payment-summary").map(
+                      (client) => (
                       <tr key={client.id}>
                         <td>{client.name}</td>
                         <td>{client.projectName}</td>
@@ -2018,7 +2540,8 @@ export default function App() {
                         <td>{formatMoney(getPendingAmount(client))}</td>
                         <td>{getPaymentStatus(client)}</td>
                       </tr>
-                    ))}
+                      ),
+                    )}
                     {!clients.length && (
                       <tr>
                         <td colSpan="6">No client records available.</td>
@@ -2027,6 +2550,7 @@ export default function App() {
                   </tbody>
                 </table>
               </div>
+              {renderTablePagination(clients, "client-payment-summary")}
             </div>
           </section>
         )}
