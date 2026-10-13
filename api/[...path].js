@@ -1,5 +1,5 @@
 import mongoose from "mongoose";
-import backend from "../../server/server.js";
+import backend from "../server/server.js";
 
 let connectionPromise;
 
