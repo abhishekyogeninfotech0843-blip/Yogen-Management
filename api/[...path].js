@@ -1,5 +1,5 @@
 import mongoose from "mongoose";
-import backend from "../server/server.js";
+import backend from "../../server/server.js";
 
 let connectionPromise;
 
@@ -26,7 +26,7 @@ export default async function handler(req, res) {
 
     return backend.app(req, res);
   } catch (error) {
-    console.error("API error:", error.message);
+    console.error("Authentication API error:", error.message);
 
     return res.status(503).json({
       error: "Backend or database connection failed.",
