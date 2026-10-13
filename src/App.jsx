@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import "./App.css";
+import AuthPage from "./AuthPage.jsx";
 
 const getTodayDate = () => {
   const date = new Date();
@@ -177,6 +178,8 @@ function TablePagination({ itemCount, page, pageSize, onPageChange }) {
 export default function App() {
   const tablePageSize = 10;
   const [tablePages, setTablePages] = useState({});
+  const [authenticatedUser, setAuthenticatedUser] = useState(null);
+  const [authActionError, setAuthActionError] = useState("");
   const [activePage, setActivePage] = useState("Dashboard");
   const [databaseStatus, setDatabaseStatus] = useState("connecting");
   const [databaseReady, setDatabaseReady] = useState(false);
@@ -257,6 +260,8 @@ export default function App() {
   }, [clients]);
 
   useEffect(() => {
+    if (!authenticatedUser) return undefined;
+
     let cancelled = false;
 
     const hydrateFromDatabase = async () => {
@@ -293,7 +298,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [authenticatedUser]);
 
   useEffect(() => {
     if (!databaseReady) return;
@@ -977,6 +982,34 @@ export default function App() {
     Reports: "Reports & Summary",
   };
 
+  async function signOut() {
+    setAuthActionError("");
+    try {
+      const response = await fetch("/api/auth/logout", {
+        method: "POST",
+        credentials: "include",
+      });
+      await readApiResponse(response);
+      for (const key of [
+        "yogen_employees",
+        "yogen_attendance",
+        "yogen_office_expenses",
+        "yogen_clients",
+      ]) {
+        localStorage.removeItem(key);
+      }
+      setDatabaseReady(false);
+      setAuthenticatedUser(null);
+    } catch (error) {
+      console.error("Sign-out failed:", error);
+      setAuthActionError(error.message);
+    }
+  }
+
+  if (!authenticatedUser) {
+    return <AuthPage onAuthenticated={setAuthenticatedUser} />;
+  }
+
   return (
     <div className="app-layout">
       <aside className="sidebar">
@@ -1005,10 +1038,17 @@ export default function App() {
         </nav>
 
         <div className="sidebar-footer">
-          <div className="profile-avatar">AC</div>
+          <div className="profile-avatar">
+            {authenticatedUser.name
+              .split(/\s+/)
+              .map((part) => part[0])
+              .join("")
+              .slice(0, 2)
+              .toUpperCase()}
+          </div>
           <div>
-            <strong>Abhishek Chauhan</strong>
-            <p>Administrator</p>
+            <strong>{authenticatedUser.name}</strong>
+            <p>{authenticatedUser.role === "admin" ? "Administrator" : "Workspace member"}</p>
           </div>
         </div>
       </aside>
@@ -1040,8 +1080,17 @@ export default function App() {
             <div className="topbar-date">
               <span>📅</span> {getTodayDate()}
             </div>
+            <button className="auth-signout" type="button" onClick={signOut}>
+              Sign out
+            </button>
           </div>
         </header>
+
+        {authActionError && (
+          <p className="auth-action-error" role="alert">
+            {authActionError}
+          </p>
+        )}
 
         {activePage === "Dashboard" && (
           <section className="page-content">
