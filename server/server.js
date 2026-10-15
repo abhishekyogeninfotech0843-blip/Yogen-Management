@@ -16,6 +16,8 @@ app.use(express.json({ limit: "5mb" }));
 
 const ALLOWED_KEYS = [
   "yogen_employees",
+  "yogen_salary_slips",
+  "yogen_exit_records",
   "yogen_attendance",
   "yogen_office_expenses",
   "yogen_clients",

@@ -9,6 +9,70 @@ const getTodayDate = () => {
 
 const currentMonth = () => getTodayDate().slice(0, 7);
 
+const formatSalaryMonth = (month) => {
+  const date = new Date(`${month}-01T00:00:00`);
+  if (Number.isNaN(date.getTime())) return month;
+  return new Intl.DateTimeFormat("en-IN", {
+    month: "long",
+    year: "numeric",
+  }).format(date);
+};
+
+const daysInSalaryMonth = (month) => {
+  const [year, monthNumber] = month.split("-").map(Number);
+  return year && monthNumber ? new Date(year, monthNumber, 0).getDate() : 30;
+};
+
+const numberBelowThousandInWords = (number) => {
+  const ones = [
+    "Zero", "One", "Two", "Three", "Four", "Five", "Six", "Seven",
+    "Eight", "Nine", "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen",
+    "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen",
+  ];
+  const tens = [
+    "", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy",
+    "Eighty", "Ninety",
+  ];
+  const words = [];
+  if (number >= 100) {
+    words.push(`${ones[Math.floor(number / 100)]} Hundred`);
+    number %= 100;
+  }
+  if (number >= 20) {
+    words.push(tens[Math.floor(number / 10)]);
+    number %= 10;
+  }
+  if (number > 0) words.push(ones[number]);
+  return words.join(" ");
+};
+
+const amountInWords = (amount) => {
+  const totalPaise = Math.round(Math.max(0, Number(amount) || 0) * 100);
+  let rupees = Math.floor(totalPaise / 100);
+  const paise = totalPaise % 100;
+  if (rupees >= 10000000000) return `${formatMoney(amount)} only`;
+
+  const sections = [
+    [10000000, "Crore"],
+    [100000, "Lakh"],
+    [1000, "Thousand"],
+  ];
+  const words = [];
+  for (const [value, label] of sections) {
+    const count = Math.floor(rupees / value);
+    if (count) {
+      words.push(`${numberBelowThousandInWords(count)} ${label}`);
+      rupees %= value;
+    }
+  }
+  if (rupees) words.push(numberBelowThousandInWords(rupees));
+  const rupeeWords = words.length ? words.join(" ") : "Zero";
+  const paiseWords = paise
+    ? ` and ${numberBelowThousandInWords(paise)} Paise`
+    : "";
+  return `Indian Rupees ${rupeeWords}${paiseWords} Only`;
+};
+
 const loadLocalData = (key, fallback) => {
   try {
     const saved = localStorage.getItem(key);
@@ -24,6 +88,17 @@ const formatMoney = (amount) =>
     currency: "INR",
     maximumFractionDigits: 2,
   }).format(Number(amount) || 0);
+
+const formatDocumentDate = (date) => {
+  if (!date) return "—";
+  const parsedDate = new Date(`${date}T00:00:00`);
+  if (Number.isNaN(parsedDate.getTime())) return date;
+  return new Intl.DateTimeFormat("en-IN", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  }).format(parsedDate);
+};
 
 const readApiResponse = async (response) => {
   let result;
@@ -175,6 +250,221 @@ function TablePagination({ itemCount, page, pageSize, onPageChange }) {
   );
 }
 
+function DocumentLetterhead({ title, subtitle }) {
+  return (
+    <>
+      <header className="document-letterhead">
+        <strong>Yogen Infotech</strong>
+        <img src="/yogen-logo.png" alt="Yogen Infotech logo" />
+      </header>
+      <div className="document-divider" />
+      <div className="document-title-row">
+        <h1>{title}</h1>
+        {subtitle && <span>{subtitle}</span>}
+      </div>
+    </>
+  );
+}
+
+function SalarySlipDocument({ slip }) {
+  const basicSalary = Number(slip.basicSalary || 0);
+  const houseRentAllowance = Number(slip.houseRentAllowance || 0);
+  const conveyanceAllowance = Number(slip.conveyanceAllowance || 0);
+  const fixedAllowance = Number(slip.fixedAllowance ?? slip.allowances ?? 0);
+  const oneTimeEarning = Number(slip.oneTimeEarning || 0);
+  const providentFund = Number(slip.providentFund || 0);
+  const professionalTax = Number(slip.professionalTax || 0);
+  const tds = Number(slip.tds || 0);
+  const otherDeductions = Number(slip.otherDeductions ?? slip.deductions ?? 0);
+  const grossEarnings =
+    basicSalary +
+    houseRentAllowance +
+    conveyanceAllowance +
+    fixedAllowance +
+    oneTimeEarning;
+  const totalDeductions =
+    slip.totalDeductions !== undefined
+      ? Number(slip.totalDeductions)
+      : providentFund + professionalTax + tds + otherDeductions;
+  const netPay =
+    slip.netPay !== undefined ? Number(slip.netPay) : grossEarnings - totalDeductions;
+  const earnings = [
+    ["Basic", basicSalary],
+    ["House Rent Allowance", houseRentAllowance],
+    ["Conveyance Allowance", conveyanceAllowance],
+    ["Fixed Allowance", fixedAllowance],
+    ["One-time Earning", oneTimeEarning],
+  ];
+  const deductions = [
+    ["PF", providentFund],
+    ["Professional Tax", professionalTax],
+    ["TDS", tds],
+    ["Other Deductions", otherDeductions],
+  ];
+
+  return (
+    <article className="print-document">
+      <DocumentLetterhead
+        title={`Payslip for the month of ${formatSalaryMonth(slip.month)}`}
+      />
+      <div className="payslip-summary">
+        <div className="payslip-employee-details">
+          <h2>Employee Pay Summary</h2>
+          <dl>
+            <dt>Employee Name</dt><dd>{slip.employeeName}</dd>
+            <dt>Employee ID</dt><dd>{slip.employeeCode || slip.employeeId}</dd>
+            <dt>Designation</dt><dd>{slip.designation || slip.role || "Employee"}</dd>
+            <dt>Date of Joining</dt><dd>{formatDocumentDate(slip.joiningDate)}</dd>
+            <dt>Pay Period</dt><dd>{formatSalaryMonth(slip.month)}</dd>
+            <dt>Pay Date</dt><dd>{formatDocumentDate(slip.paidOn)}</dd>
+          </dl>
+          <p className="payslip-attendance">
+            Paid Days: <strong>{slip.paidDays ?? 30}</strong>
+            <span>|</span>
+            LOP Days: <strong>{slip.lopDays ?? 0}</strong>
+          </p>
+        </div>
+        <div className="payslip-net-card">
+          <span>Employee Net Pay</span>
+          <strong>{formatMoney(netPay)}</strong>
+          <small>Paid on {formatDocumentDate(slip.paidOn)}</small>
+        </div>
+      </div>
+      <div className="payslip-breakdown">
+        <table className="document-table">
+          <thead>
+            <tr><th colSpan="3">Earnings</th></tr>
+            <tr><th>Component</th><th>Amount</th><th>YTD</th></tr>
+          </thead>
+          <tbody>
+            {earnings.map(([label, amount]) => (
+              <tr key={label}>
+                <td>{label}</td><td>{formatMoney(amount)}</td><td>—</td>
+              </tr>
+            ))}
+            <tr className="document-total-row">
+              <td>Gross Earnings</td><td>{formatMoney(grossEarnings)}</td><td>—</td>
+            </tr>
+          </tbody>
+        </table>
+        <table className="document-table">
+          <thead>
+            <tr><th colSpan="3">Deductions</th></tr>
+            <tr><th>Component</th><th>Amount</th><th>YTD</th></tr>
+          </thead>
+          <tbody>
+            {deductions.map(([label, amount]) => (
+              <tr key={label}>
+                <td>{label}</td><td>{formatMoney(amount)}</td><td>—</td>
+              </tr>
+            ))}
+            <tr className="document-total-row">
+              <td>Total Deductions</td><td>{formatMoney(totalDeductions)}</td><td>—</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div className="payslip-total-banner">
+        <strong>Total Net Payable: {formatMoney(netPay)}</strong>
+        <span>({amountInWords(netPay)})</span>
+      </div>
+      <p className="payslip-calculation">
+        Total Net Payable = Gross Earnings − Total Deductions
+      </p>
+      <p className="document-note">
+        This is a system-generated payslip; no signature is required.
+      </p>
+    </article>
+  );
+}
+
+function ExitDocument({ record, type }) {
+  const employee = record.employeeName;
+  const issueDate = formatDocumentDate(record.issueDate);
+  const lastDay = formatDocumentDate(record.lastWorkingDate);
+  const heading = {
+    acceptance: "Resignation Acceptance Letter",
+    relieving: "Relieving Letter",
+    experience: "Experience Certificate",
+    settlement: "Full & Final Settlement Statement",
+  }[type];
+
+  return (
+    <article className="print-document">
+      <DocumentLetterhead title={heading} subtitle={`Date: ${issueDate}`} />
+      {type === "acceptance" && (
+        <>
+          <p>To,<br /><strong>{employee}</strong></p>
+          <p><strong>Subject: Acceptance of resignation</strong></p>
+          <p>Dear {employee},</p>
+          <p>
+            This is to acknowledge and accept your resignation from your position
+            as {record.role || "Employee"} at Yogen Infotech. Your last working
+            day will be {lastDay}. Your notice period is {record.noticePeriod || "0"} days.
+          </p>
+          {record.reason && <p>Reason noted: {record.reason}</p>}
+          <p>We thank you for your contributions and wish you success in your future endeavours.</p>
+          <p>Sincerely,</p>
+        </>
+      )}
+      {type === "relieving" && (
+        <>
+          <p><strong>To Whom It May Concern</strong></p>
+          <p>
+            This is to certify that {employee} was employed with Yogen Infotech
+            as {record.role || "Employee"} and has been relieved from their
+            duties effective {lastDay}, following acceptance of their resignation.
+          </p>
+          <p>
+            Please complete and verify any handover and exit formalities with
+            the company before the effective relieving date.
+          </p>
+          <p>We wish them the very best in their future endeavours.</p>
+        </>
+      )}
+      {type === "experience" && (
+        <>
+          <p><strong>To Whom It May Concern</strong></p>
+          <p>
+            This is to certify that {employee} worked with Yogen Infotech as
+            {` ${record.role || "Employee"}`}
+            {record.joiningDate
+              ? ` from ${formatDocumentDate(record.joiningDate)} through ${lastDay}.`
+              : ` until ${lastDay}.`}
+          </p>
+          <p>
+            During their time with us, they carried out the responsibilities of
+            their role. We thank them for their service and wish them success.
+          </p>
+        </>
+      )}
+      {type === "settlement" && (
+        <>
+          <p><strong>Employee:</strong> {employee}</p>
+          <p><strong>Designation:</strong> {record.role || "Employee"}</p>
+          <p><strong>Last working day:</strong> {lastDay}</p>
+          <p><strong>Resignation date:</strong> {formatDocumentDate(record.resignationDate)}</p>
+          <table className="document-table settlement-table">
+            <tbody>
+              <tr><td>Full and final settlement amount</td><td>{formatMoney(record.finalSettlement)}</td></tr>
+            </tbody>
+          </table>
+          <p>
+            This statement records the settlement amount entered by the
+            administrator. Verify all dues, deductions and statutory
+            requirements before issuing the final settlement.
+          </p>
+        </>
+      )}
+      <p className="document-signoff">Sincerely,</p>
+      <footer className="document-signature">
+        <span>{record.authorizedBy || "Authorized Signatory"}<br />{record.authorizedRole || "For Yogen Infotech"}</span>
+        <span>Signature &amp; company seal</span>
+      </footer>
+    </article>
+  );
+}
+
 export default function App() {
   const tablePageSize = 10;
   const [tablePages, setTablePages] = useState({});
@@ -196,6 +486,49 @@ export default function App() {
   const [editedEmployeeName, setEditedEmployeeName] = useState("");
   const [editedEmployeeSalary, setEditedEmployeeSalary] = useState("");
   const [editedEmployeeRole, setEditedEmployeeRole] = useState("Employee");
+
+  // SALARY SLIPS: Keep generated monthly statements separate from employee records.
+  const [salarySlips, setSalarySlips] = useState(() =>
+    loadLocalData("yogen_salary_slips", []),
+  );
+  const [salarySlipEmployeeId, setSalarySlipEmployeeId] = useState("");
+  const [salarySlipMonth, setSalarySlipMonth] = useState(currentMonth());
+  const [salarySlipForm, setSalarySlipForm] = useState({
+    employeeCode: "",
+    joiningDate: "",
+    designation: "",
+    basicSalary: "",
+    houseRentAllowance: "0",
+    conveyanceAllowance: "0",
+    fixedAllowance: "0",
+    oneTimeEarning: "0",
+    providentFund: "0",
+    professionalTax: "0",
+    tds: "0",
+    otherDeductions: "0",
+    paidDays: String(Math.min(30, daysInSalaryMonth(currentMonth()))),
+    lopDays: "0",
+    paidOn: getTodayDate(),
+  });
+  const [selectedSalarySlip, setSelectedSalarySlip] = useState(null);
+
+  // RESIGNATION & EXIT: Store exit details and the generated document snapshot.
+  const [exitRecords, setExitRecords] = useState(() =>
+    loadLocalData("yogen_exit_records", []),
+  );
+  const [exitEmployeeId, setExitEmployeeId] = useState("");
+  const [exitForm, setExitForm] = useState({
+    resignationDate: getTodayDate(),
+    lastWorkingDate: "",
+    joiningDate: "",
+    noticePeriod: "0",
+    reason: "",
+    finalSettlement: "0",
+    issueDate: getTodayDate(),
+    authorizedBy: "",
+    authorizedRole: "Administrator",
+  });
+  const [selectedExitDocument, setSelectedExitDocument] = useState(null);
 
   // ATTENDANCE: Existing storage key preserved.
   const [attendance, setAttendance] = useState(() =>
@@ -225,6 +558,8 @@ export default function App() {
   );
   const localDataAtStartup = useRef({
     yogen_employees: employees,
+    yogen_salary_slips: salarySlips,
+    yogen_exit_records: exitRecords,
     yogen_attendance: attendance,
     yogen_office_expenses: expenses,
     yogen_clients: clients,
@@ -248,6 +583,14 @@ export default function App() {
   }, [employees]);
 
   useEffect(() => {
+    localStorage.setItem("yogen_salary_slips", JSON.stringify(salarySlips));
+  }, [salarySlips]);
+
+  useEffect(() => {
+    localStorage.setItem("yogen_exit_records", JSON.stringify(exitRecords));
+  }, [exitRecords]);
+
+  useEffect(() => {
     localStorage.setItem("yogen_attendance", JSON.stringify(attendance));
   }, [attendance]);
 
@@ -269,6 +612,8 @@ export default function App() {
         const remoteData = await loadOfficeData();
         const modules = [
           ["yogen_employees", setEmployees],
+          ["yogen_salary_slips", setSalarySlips],
+          ["yogen_exit_records", setExitRecords],
           ["yogen_attendance", setAttendance],
           ["yogen_office_expenses", setExpenses],
           ["yogen_clients", setClients],
@@ -312,6 +657,24 @@ export default function App() {
   useEffect(() => {
     if (!databaseReady) return;
 
+    saveOfficeData("yogen_salary_slips", salarySlips).catch((error) => {
+      console.error("Could not sync salary slips to MongoDB:", error);
+      setDatabaseStatus("offline");
+    });
+  }, [salarySlips, databaseReady]);
+
+  useEffect(() => {
+    if (!databaseReady) return;
+
+    saveOfficeData("yogen_exit_records", exitRecords).catch((error) => {
+      console.error("Could not sync employee exit records to MongoDB:", error);
+      setDatabaseStatus("offline");
+    });
+  }, [exitRecords, databaseReady]);
+
+  useEffect(() => {
+    if (!databaseReady) return;
+
     saveOfficeData("yogen_attendance", attendance).catch((error) => {
       console.error("Could not sync attendance to MongoDB:", error);
       setDatabaseStatus("offline");
@@ -339,6 +702,25 @@ export default function App() {
   const employeePayroll = employees.reduce(
     (sum, employee) => sum + Number(employee.salary || 0),
     0,
+  );
+  const salarySlipGrossPreview = [
+    "basicSalary",
+    "houseRentAllowance",
+    "conveyanceAllowance",
+    "fixedAllowance",
+    "oneTimeEarning",
+  ].reduce((total, key) => total + Number(salarySlipForm[key] || 0), 0);
+  const salarySlipDeductionsPreview = [
+    "providentFund",
+    "professionalTax",
+    "tds",
+    "otherDeductions",
+  ].reduce((total, key) => total + Number(salarySlipForm[key] || 0), 0);
+  const selectedExitEmployee = employees.find(
+    (employee) => String(employee.id) === exitEmployeeId,
+  );
+  const savedExitRecord = exitRecords.find(
+    (record) => String(record.employeeId) === exitEmployeeId,
   );
 
   const attendanceForDate = attendance[attendanceDate] || {};
@@ -668,6 +1050,282 @@ export default function App() {
     cancelEmployeeEdit();
   }
 
+  function saveSalarySlip(event) {
+    event.preventDefault();
+    const employee = employees.find(
+      (item) => String(item.id) === salarySlipEmployeeId,
+    );
+    const amountFields = [
+      "basicSalary",
+      "houseRentAllowance",
+      "conveyanceAllowance",
+      "fixedAllowance",
+      "oneTimeEarning",
+      "providentFund",
+      "professionalTax",
+      "tds",
+      "otherDeductions",
+    ];
+    const amounts = Object.fromEntries(
+      amountFields.map((key) => [key, Number(salarySlipForm[key])]),
+    );
+    const paidDays = Number(salarySlipForm.paidDays);
+    const lopDays = Number(salarySlipForm.lopDays);
+    const grossEarnings = [
+      amounts.basicSalary,
+      amounts.houseRentAllowance,
+      amounts.conveyanceAllowance,
+      amounts.fixedAllowance,
+      amounts.oneTimeEarning,
+    ].reduce((total, amount) => total + amount, 0);
+    const totalDeductions = [
+      amounts.providentFund,
+      amounts.professionalTax,
+      amounts.tds,
+      amounts.otherDeductions,
+    ].reduce((total, amount) => total + amount, 0);
+
+    if (
+      !employee ||
+      !salarySlipMonth ||
+      !salarySlipForm.paidOn ||
+      !salarySlipForm.employeeCode.trim() ||
+      !salarySlipForm.designation.trim()
+    ) {
+      alert("Employee, employee ID, designation, salary month aur payment date fill karein.");
+      return;
+    }
+
+    if (
+      amountFields.some(
+        (key) => !Number.isFinite(amounts[key]) || amounts[key] < 0,
+      ) ||
+      !Number.isInteger(paidDays) ||
+      !Number.isInteger(lopDays) ||
+      paidDays < 0 ||
+      lopDays < 0 ||
+      paidDays + lopDays > daysInSalaryMonth(salarySlipMonth)
+    ) {
+      alert("Salary amounts aur paid/LOP days valid honi chahiye; days month ke total se zyada nahi ho sakte.");
+      return;
+    }
+
+    if (totalDeductions > grossEarnings) {
+      alert("Total deductions gross earnings se zyada nahi ho sakti.");
+      return;
+    }
+
+    const slip = {
+      id: `${employee.id}-${salarySlipMonth}`,
+      employeeId: employee.id,
+      employeeCode: salarySlipForm.employeeCode.trim(),
+      employeeName: employee.name,
+      role: salarySlipForm.designation.trim(),
+      designation: salarySlipForm.designation.trim(),
+      joiningDate: salarySlipForm.joiningDate,
+      month: salarySlipMonth,
+      paidOn: salarySlipForm.paidOn,
+      paidDays,
+      lopDays,
+      ...amounts,
+      allowances:
+        amounts.houseRentAllowance +
+        amounts.conveyanceAllowance +
+        amounts.fixedAllowance +
+        amounts.oneTimeEarning,
+      deductions: totalDeductions,
+      grossEarnings,
+      totalDeductions,
+      netPay: grossEarnings - totalDeductions,
+      generatedAt: new Date().toISOString(),
+    };
+
+    setSalarySlips((previous) => [
+      slip,
+      ...previous.filter((item) => item.id !== slip.id),
+    ]);
+    setSelectedSalarySlip(slip);
+  }
+
+  function loadSalarySlipDraft(employeeId, month) {
+    const employee = employees.find(
+      (item) => String(item.id) === employeeId,
+    );
+    const existingSlip = salarySlips.find(
+      (slip) =>
+        String(slip.employeeId) === employeeId && slip.month === month,
+    );
+    const defaultCode = employee
+      ? `EMP${String(employee.id).padStart(3, "0")}`
+      : "";
+    const defaultDays = String(Math.min(30, daysInSalaryMonth(month)));
+    const existingAmount = (key, legacyKey) =>
+      String(existingSlip?.[key] ?? existingSlip?.[legacyKey] ?? 0);
+
+    setSalarySlipForm({
+      employeeCode: existingSlip?.employeeCode || defaultCode,
+      joiningDate: existingSlip?.joiningDate || "",
+      designation:
+        existingSlip?.designation ||
+        existingSlip?.role ||
+        employee?.role ||
+        "Employee",
+      basicSalary: String(existingSlip?.basicSalary ?? employee?.salary ?? 0),
+      houseRentAllowance: existingAmount("houseRentAllowance"),
+      conveyanceAllowance: existingAmount("conveyanceAllowance"),
+      fixedAllowance: existingAmount("fixedAllowance", "allowances"),
+      oneTimeEarning: existingAmount("oneTimeEarning"),
+      providentFund: existingAmount("providentFund"),
+      professionalTax: existingAmount("professionalTax"),
+      tds: existingAmount("tds"),
+      otherDeductions: existingAmount("otherDeductions", "deductions"),
+      paidDays: String(existingSlip?.paidDays ?? defaultDays),
+      lopDays: String(existingSlip?.lopDays ?? 0),
+      paidOn: existingSlip?.paidOn || getTodayDate(),
+    });
+    setSelectedSalarySlip(null);
+  }
+
+  function selectSalarySlipEmployee(employeeId) {
+    setSalarySlipEmployeeId(employeeId);
+    loadSalarySlipDraft(employeeId, salarySlipMonth);
+  }
+
+  function selectSalarySlipMonth(month) {
+    setSalarySlipMonth(month);
+    loadSalarySlipDraft(salarySlipEmployeeId, month);
+  }
+
+  function selectExitEmployee(employeeId) {
+    setExitEmployeeId(employeeId);
+    setSelectedExitDocument(null);
+    const savedRecord = exitRecords.find(
+      (record) => String(record.employeeId) === employeeId,
+    );
+    if (savedRecord) {
+      setExitForm({
+        resignationDate: savedRecord.resignationDate || "",
+        lastWorkingDate: savedRecord.lastWorkingDate || "",
+        joiningDate: savedRecord.joiningDate || "",
+        noticePeriod: String(savedRecord.noticePeriod ?? "0"),
+        reason: savedRecord.reason || "",
+        finalSettlement: String(savedRecord.finalSettlement ?? "0"),
+        issueDate: savedRecord.issueDate || getTodayDate(),
+        authorizedBy: savedRecord.authorizedBy || "",
+        authorizedRole: savedRecord.authorizedRole || "Administrator",
+      });
+    } else {
+      setExitForm({
+        resignationDate: getTodayDate(),
+        lastWorkingDate: "",
+        joiningDate: "",
+        noticePeriod: "0",
+        reason: "",
+        finalSettlement: "0",
+        issueDate: getTodayDate(),
+        authorizedBy: "",
+        authorizedRole: "Administrator",
+      });
+    }
+  }
+
+  function saveExitRecord(event) {
+    event.preventDefault();
+    const employeeId = exitEmployeeId;
+    const employee = employees.find(
+      (item) => String(item.id) === employeeId,
+    );
+    const finalSettlement = Number(exitForm.finalSettlement);
+    const noticePeriod = Number(exitForm.noticePeriod);
+
+    if (!employee || !exitForm.resignationDate || !exitForm.lastWorkingDate) {
+      alert("Employee, resignation date aur last working date fill karein.");
+      return;
+    }
+
+    if (exitForm.lastWorkingDate < exitForm.resignationDate) {
+      alert("Last working date resignation date se pehle nahi ho sakti.");
+      return;
+    }
+
+    if (exitForm.joiningDate && exitForm.joiningDate > exitForm.lastWorkingDate) {
+      alert("Joining date last working date ke baad nahi ho sakti.");
+      return;
+    }
+
+    if (
+      !Number.isFinite(finalSettlement) ||
+      finalSettlement < 0 ||
+      !Number.isFinite(noticePeriod) ||
+      noticePeriod < 0
+    ) {
+      alert("Notice period aur settlement amount valid, non-negative values honi chahiye.");
+      return;
+    }
+
+    const record = {
+      id: String(employee.id),
+      employeeId: employee.id,
+      employeeName: employee.name,
+      role: employee.role || "Employee",
+      resignationDate: exitForm.resignationDate,
+      lastWorkingDate: exitForm.lastWorkingDate,
+      joiningDate: exitForm.joiningDate,
+      noticePeriod,
+      reason: exitForm.reason.trim(),
+      finalSettlement,
+      issueDate: exitForm.issueDate || getTodayDate(),
+      authorizedBy: exitForm.authorizedBy.trim(),
+      authorizedRole: exitForm.authorizedRole.trim(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    setExitRecords((previous) => [
+      record,
+      ...previous.filter((item) => String(item.employeeId) !== employeeId),
+    ]);
+    setSelectedExitDocument({ record, type: "acceptance" });
+  }
+
+  function printDocuments() {
+    window.print();
+  }
+
+  function deleteSalarySlip(slip) {
+    if (
+      !window.confirm(
+        `${slip.employeeName} ki ${formatSalaryMonth(slip.month)} salary slip delete karni hai?`,
+      )
+    ) {
+      return;
+    }
+
+    setSalarySlips((previous) =>
+      previous.filter((item) => item.id !== slip.id),
+    );
+    if (selectedSalarySlip?.id === slip.id) {
+      setSelectedSalarySlip(null);
+    }
+  }
+
+  function deleteExitRecord(record) {
+    if (
+      !window.confirm(
+        `${record.employeeName} ka saved resignation/exit record delete karna hai?`,
+      )
+    ) {
+      return;
+    }
+
+    setExitRecords((previous) =>
+      previous.filter((item) => item.id !== record.id),
+    );
+    if (String(exitEmployeeId) === String(record.employeeId)) {
+      setExitEmployeeId("");
+      setSelectedExitDocument(null);
+    }
+  }
+
   function updateAttendance(employeeId, status) {
     setAttendance((previous) => {
       const currentDay = { ...(previous[attendanceDate] || {}) };
@@ -967,6 +1625,8 @@ export default function App() {
     { name: "Employees", icon: "👥" },
     { name: "Attendance", icon: "📅" },
     { name: "Salary & Payroll", icon: "💰" },
+    { name: "Salary Slips", icon: "🧾" },
+    { name: "Resignation & Exit", icon: "📄" },
     { name: "Office Expenses", icon: "🧾" },
     { name: "Clients & Payments", icon: "🤝" },
     { name: "Reports", icon: "📈" },
@@ -977,6 +1637,8 @@ export default function App() {
     Employees: "Employees Management",
     Attendance: "Attendance Management",
     "Salary & Payroll": "Salary & Payroll",
+    "Salary Slips": "Salary Slips",
+    "Resignation & Exit": "Resignation & Exit Documents",
     "Office Expenses": "Office Expenses",
     "Clients & Payments": "Clients & Payments",
     Reports: "Reports & Summary",
@@ -992,6 +1654,8 @@ export default function App() {
       await readApiResponse(response);
       for (const key of [
         "yogen_employees",
+        "yogen_salary_slips",
+        "yogen_exit_records",
         "yogen_attendance",
         "yogen_office_expenses",
         "yogen_clients",
@@ -1704,6 +2368,483 @@ export default function App() {
                 </table>
               </div>
               {renderTablePagination(employees, "payroll")}
+            </div>
+          </section>
+        )}
+
+        {activePage === "Salary Slips" && (
+          <section className="page-content module-page">
+            <div className="panel">
+              <div className="panel-header">
+                <div>
+                  <h3>Create Salary Slip</h3>
+                  <p>Employee ki monthly salary details save karein; print dialog se PDF download kar sakte hain.</p>
+                </div>
+              </div>
+              {!employees.length ? (
+                <div className="empty-state">Pehle Employees section me employee add karein.</div>
+              ) : (
+                <form className="employee-form document-form" onSubmit={saveSalarySlip}>
+                  <label>
+                    Employee
+                    <select
+                      value={salarySlipEmployeeId}
+                      onChange={(event) => selectSalarySlipEmployee(event.target.value)}
+                      required
+                    >
+                      <option value="">Select employee</option>
+                      {employees.map((employee) => (
+                        <option key={employee.id} value={String(employee.id)}>
+                          {employee.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    Salary month
+                    <input
+                      type="month"
+                      value={salarySlipMonth}
+                      onChange={(event) => selectSalarySlipMonth(event.target.value)}
+                      required
+                    />
+                  </label>
+                  <label>
+                    Employee ID / code
+                    <input
+                      value={salarySlipForm.employeeCode}
+                      onChange={(event) => setSalarySlipForm((form) => ({ ...form, employeeCode: event.target.value }))}
+                      required
+                    />
+                  </label>
+                  <label>
+                    Designation
+                    <input
+                      value={salarySlipForm.designation}
+                      onChange={(event) => setSalarySlipForm((form) => ({ ...form, designation: event.target.value }))}
+                      required
+                    />
+                  </label>
+                  <label>
+                    Date of joining (optional)
+                    <input
+                      type="date"
+                      value={salarySlipForm.joiningDate}
+                      onChange={(event) => setSalarySlipForm((form) => ({ ...form, joiningDate: event.target.value }))}
+                    />
+                  </label>
+                  <label>
+                    Pay date
+                    <input
+                      type="date"
+                      value={salarySlipForm.paidOn}
+                      onChange={(event) => setSalarySlipForm((form) => ({ ...form, paidOn: event.target.value }))}
+                      required
+                    />
+                  </label>
+                  <div className="document-form-group-title">Earnings (₹)</div>
+                  <label>
+                    Basic
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={salarySlipForm.basicSalary}
+                      onChange={(event) => setSalarySlipForm((form) => ({ ...form, basicSalary: event.target.value }))}
+                      required
+                    />
+                  </label>
+                  <label>
+                    House Rent Allowance
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={salarySlipForm.houseRentAllowance}
+                      onChange={(event) => setSalarySlipForm((form) => ({ ...form, houseRentAllowance: event.target.value }))}
+                      required
+                    />
+                  </label>
+                  <label>
+                    Conveyance Allowance
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={salarySlipForm.conveyanceAllowance}
+                      onChange={(event) => setSalarySlipForm((form) => ({ ...form, conveyanceAllowance: event.target.value }))}
+                      required
+                    />
+                  </label>
+                  <label>
+                    Fixed Allowance
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={salarySlipForm.fixedAllowance}
+                      onChange={(event) => setSalarySlipForm((form) => ({ ...form, fixedAllowance: event.target.value }))}
+                      required
+                    />
+                  </label>
+                  <label>
+                    One-time Earning
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={salarySlipForm.oneTimeEarning}
+                      onChange={(event) => setSalarySlipForm((form) => ({ ...form, oneTimeEarning: event.target.value }))}
+                      required
+                    />
+                  </label>
+                  <div className="document-form-group-title">Deductions (₹)</div>
+                  <label>
+                    PF
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={salarySlipForm.providentFund}
+                      onChange={(event) => setSalarySlipForm((form) => ({ ...form, providentFund: event.target.value }))}
+                      required
+                    />
+                  </label>
+                  <label>
+                    Professional Tax
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={salarySlipForm.professionalTax}
+                      onChange={(event) => setSalarySlipForm((form) => ({ ...form, professionalTax: event.target.value }))}
+                      required
+                    />
+                  </label>
+                  <label>
+                    TDS
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={salarySlipForm.tds}
+                      onChange={(event) => setSalarySlipForm((form) => ({ ...form, tds: event.target.value }))}
+                      required
+                    />
+                  </label>
+                  <label>
+                    Other Deductions
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={salarySlipForm.otherDeductions}
+                      onChange={(event) => setSalarySlipForm((form) => ({ ...form, otherDeductions: event.target.value }))}
+                      required
+                    />
+                  </label>
+                  <div className="document-form-group-title">Attendance &amp; payment</div>
+                  <label>
+                    Paid Days
+                    <input
+                      type="number"
+                      min="0"
+                      max={daysInSalaryMonth(salarySlipMonth)}
+                      step="1"
+                      value={salarySlipForm.paidDays}
+                      onChange={(event) => setSalarySlipForm((form) => ({ ...form, paidDays: event.target.value }))}
+                      required
+                    />
+                  </label>
+                  <label>
+                    LOP Days
+                    <input
+                      type="number"
+                      min="0"
+                      max={daysInSalaryMonth(salarySlipMonth)}
+                      step="1"
+                      value={salarySlipForm.lopDays}
+                      onChange={(event) => setSalarySlipForm((form) => ({ ...form, lopDays: event.target.value }))}
+                      required
+                    />
+                  </label>
+                  <p className="document-hint">
+                    Gross earnings: {formatMoney(salarySlipGrossPreview)}
+                    {" "}· Net pay: {formatMoney(salarySlipGrossPreview - salarySlipDeductionsPreview)}
+                    {" "}· Paid/LOP days earnings ko automatically adjust nahi karte; actual payable amounts enter karein.
+                  </p>
+                  <button className="primary-button" type="submit">
+                    Save Salary Slip
+                  </button>
+                </form>
+              )}
+            </div>
+
+            {selectedSalarySlip && (
+              <div className="panel document-preview-panel">
+                <div className="panel-header document-toolbar">
+                  <div>
+                    <h3>Salary Slip Preview</h3>
+                    <p>Browser print window me “Save as PDF” choose karein.</p>
+                  </div>
+                  <button className="primary-button" type="button" onClick={printDocuments}>
+                    Print / Download PDF
+                  </button>
+                </div>
+                <SalarySlipDocument slip={selectedSalarySlip} />
+              </div>
+            )}
+
+            <div className="panel">
+              <div className="panel-header">
+                <div>
+                  <h3>Saved Salary Slips</h3>
+                  <p>{salarySlips.length} monthly record(s) saved.</p>
+                </div>
+              </div>
+              <div className="table-wrapper">
+                <table>
+                  <thead>
+                    <tr><th>Month</th><th>Employee</th><th>Net pay</th><th>Payment date</th><th>Action</th></tr>
+                  </thead>
+                  <tbody>
+                    {[...salarySlips]
+                      .sort((first, second) => (second.month || "").localeCompare(first.month || ""))
+                      .map((slip) => (
+                        <tr key={slip.id}>
+                          <td>{formatSalaryMonth(slip.month)}</td>
+                          <td>{slip.employeeName}</td>
+                          <td>{formatMoney(slip.netPay)}</td>
+                          <td>{slip.paidOn}</td>
+                          <td>
+                            <div className="document-record-actions">
+                              <button
+                                className="secondary-button"
+                                type="button"
+                                onClick={() => setSelectedSalarySlip(slip)}
+                              >
+                                View / Print
+                              </button>
+                              <button
+                                className="danger-button"
+                                type="button"
+                                onClick={() => deleteSalarySlip(slip)}
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    {!salarySlips.length && (
+                      <tr><td colSpan="5">Salary slips save karne ke baad yahan dikhengi.</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {activePage === "Resignation & Exit" && (
+          <section className="page-content module-page">
+            <div className="panel">
+              <div className="panel-header">
+                <div>
+                  <h3>Employee Resignation &amp; Exit Documents</h3>
+                  <p>Details save karke resignation acceptance, relieving, experience aur full &amp; final documents banayein.</p>
+                </div>
+              </div>
+              {!employees.length ? (
+                <div className="empty-state">Pehle Employees section me employee add karein.</div>
+              ) : (
+                <form className="employee-form document-form" onSubmit={saveExitRecord}>
+                  <label>
+                    Employee
+                    <select
+                      value={exitEmployeeId}
+                      onChange={(event) => selectExitEmployee(event.target.value)}
+                      required
+                    >
+                      <option value="">Select employee</option>
+                      {employees.map((employee) => (
+                        <option key={employee.id} value={String(employee.id)}>
+                          {employee.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    Resignation date
+                    <input
+                      type="date"
+                      value={exitForm.resignationDate}
+                      onChange={(event) => setExitForm((form) => ({ ...form, resignationDate: event.target.value }))}
+                      required
+                    />
+                  </label>
+                  <label>
+                    Last working date
+                    <input
+                      type="date"
+                      value={exitForm.lastWorkingDate}
+                      onChange={(event) => setExitForm((form) => ({ ...form, lastWorkingDate: event.target.value }))}
+                      required
+                    />
+                  </label>
+                  <label>
+                    Joining date (optional)
+                    <input
+                      type="date"
+                      value={exitForm.joiningDate}
+                      onChange={(event) => setExitForm((form) => ({ ...form, joiningDate: event.target.value }))}
+                    />
+                  </label>
+                  <label>
+                    Notice period (days)
+                    <input
+                      type="number"
+                      min="0"
+                      step="1"
+                      value={exitForm.noticePeriod}
+                      onChange={(event) => setExitForm((form) => ({ ...form, noticePeriod: event.target.value }))}
+                      required
+                    />
+                  </label>
+                  <label>
+                    Resignation reason (optional)
+                    <input
+                      value={exitForm.reason}
+                      onChange={(event) => setExitForm((form) => ({ ...form, reason: event.target.value }))}
+                    />
+                  </label>
+                  <label>
+                    Full &amp; final settlement amount (₹)
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={exitForm.finalSettlement}
+                      onChange={(event) => setExitForm((form) => ({ ...form, finalSettlement: event.target.value }))}
+                      required
+                    />
+                  </label>
+                  <label>
+                    Document issue date
+                    <input
+                      type="date"
+                      value={exitForm.issueDate}
+                      onChange={(event) => setExitForm((form) => ({ ...form, issueDate: event.target.value }))}
+                      required
+                    />
+                  </label>
+                  <label>
+                    Authorized signatory
+                    <input
+                      value={exitForm.authorizedBy}
+                      onChange={(event) => setExitForm((form) => ({ ...form, authorizedBy: event.target.value }))}
+                      placeholder="Name"
+                    />
+                  </label>
+                  <label>
+                    Signatory designation
+                    <input
+                      value={exitForm.authorizedRole}
+                      onChange={(event) => setExitForm((form) => ({ ...form, authorizedRole: event.target.value }))}
+                    />
+                  </label>
+                  <p className="document-hint">
+                    Exit documents ke liye entered details save honge. Employee record ya payroll automatically delete/change nahi hoga.
+                  </p>
+                  <button className="primary-button" type="submit">
+                    Save Exit Details
+                  </button>
+                </form>
+              )}
+            </div>
+
+            {savedExitRecord && (
+              <div className="panel">
+                <div className="panel-header">
+                  <div>
+                    <h3>Generate Documents for {selectedExitEmployee?.name || savedExitRecord.employeeName}</h3>
+                    <p>Document select karein, phir print window se PDF save karein.</p>
+                  </div>
+                  <button className="primary-button" type="button" onClick={printDocuments} disabled={!selectedExitDocument}>
+                    Print / Download PDF
+                  </button>
+                </div>
+                <div className="document-actions">
+                  {[
+                    ["acceptance", "Resignation Acceptance"],
+                    ["relieving", "Relieving Letter"],
+                    ["experience", "Experience Certificate"],
+                    ["settlement", "Full & Final Statement"],
+                  ].map(([type, title]) => (
+                    <button
+                      className={`secondary-button${selectedExitDocument?.type === type ? " active-document-button" : ""}`}
+                      type="button"
+                      key={type}
+                      onClick={() => setSelectedExitDocument({ record: savedExitRecord, type })}
+                    >
+                      {title}
+                    </button>
+                  ))}
+                </div>
+                {selectedExitDocument && (
+                  <ExitDocument
+                    record={selectedExitDocument.record}
+                    type={selectedExitDocument.type}
+                  />
+                )}
+              </div>
+            )}
+
+            <div className="panel">
+              <div className="panel-header">
+                <div>
+                  <h3>Saved Exit Records</h3>
+                  <p>{exitRecords.length} employee exit record(s) saved.</p>
+                </div>
+              </div>
+              <div className="table-wrapper">
+                <table>
+                  <thead>
+                    <tr><th>Employee</th><th>Resignation date</th><th>Last working day</th><th>Settlement</th><th>Action</th></tr>
+                  </thead>
+                  <tbody>
+                    {exitRecords.map((record) => (
+                      <tr key={record.id}>
+                        <td>{record.employeeName}</td>
+                        <td>{record.resignationDate}</td>
+                        <td>{record.lastWorkingDate}</td>
+                        <td>{formatMoney(record.finalSettlement)}</td>
+                        <td>
+                          <div className="document-record-actions">
+                            <button
+                              className="secondary-button"
+                              type="button"
+                              onClick={() => selectExitEmployee(String(record.employeeId))}
+                            >
+                              View / Edit
+                            </button>
+                            <button
+                              className="danger-button"
+                              type="button"
+                              onClick={() => deleteExitRecord(record)}
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                    {!exitRecords.length && (
+                      <tr><td colSpan="5">Saved employee exit records yahan dikhengi.</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </section>
         )}
