@@ -2847,6 +2847,109 @@ select:focus-visible {
   gap: 8px;
 }
 
+.payroll-payment-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+  margin: -6px 0 24px;
+}
+
+.payroll-month-control {
+  display: grid;
+  gap: 6px;
+  min-width: 170px;
+  color: #59667d;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.payroll-month-control input {
+  min-height: 38px;
+  padding: 8px 10px;
+  border: 1px solid #e0e6f0;
+  border-radius: 8px;
+  color: #253653;
+}
+
+.payroll-payment-form {
+  margin-top: 16px;
+}
+
+.payroll-form-heading,
+.payroll-form-actions {
+  display: flex;
+  grid-column: 1 / -1;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.payroll-form-heading {
+  color: #253653;
+  font-size: 13px;
+}
+
+.payroll-form-heading span {
+  color: #59667d;
+  font-size: 12px;
+}
+
+.payroll-status-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 9px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.payroll-status-badge.paid {
+  background: #e6f6ec;
+  color: #168246;
+}
+
+.payroll-status-badge.partially-paid {
+  background: #fff5dc;
+  color: #9a6700;
+}
+
+.payroll-status-badge.unpaid {
+  background: #fff0ef;
+  color: #bd3d32;
+}
+
+.payroll-total-row {
+  background: #f3f6fb;
+}
+
+.payroll-payment-history {
+  margin-top: 26px;
+}
+
+.payroll-payment-history h4 {
+  margin: 0 0 12px;
+  color: #253653;
+  font-size: 13px;
+}
+
+@media (max-width: 900px) {
+  .payroll-payment-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 650px) {
+  .payroll-payment-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .payroll-month-control {
+    width: 100%;
+  }
+}
+
 .document-preview-panel {
   overflow: hidden;
 }

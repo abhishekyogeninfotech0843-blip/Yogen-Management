@@ -487,6 +487,17 @@ export default function App() {
   const [editedEmployeeSalary, setEditedEmployeeSalary] = useState("");
   const [editedEmployeeRole, setEditedEmployeeRole] = useState("Employee");
 
+  // PAYROLL PAYMENTS: Salary disbursements are separate from payslip records.
+  const [payrollPayments, setPayrollPayments] = useState(() =>
+    loadLocalData("yogen_payroll_payments", []),
+  );
+  const [payrollMonth, setPayrollMonth] = useState(currentMonth());
+  const [payrollPaymentEmployeeId, setPayrollPaymentEmployeeId] = useState("");
+  const [payrollPaymentAmount, setPayrollPaymentAmount] = useState("");
+  const [payrollPaymentDate, setPayrollPaymentDate] = useState(getTodayDate());
+  const [payrollPaymentMethod, setPayrollPaymentMethod] = useState("Bank Transfer");
+  const [payrollPaymentReference, setPayrollPaymentReference] = useState("");
+
   // SALARY SLIPS: Keep generated monthly statements separate from employee records.
   const [salarySlips, setSalarySlips] = useState(() =>
     loadLocalData("yogen_salary_slips", []),
@@ -558,6 +569,7 @@ export default function App() {
   );
   const localDataAtStartup = useRef({
     yogen_employees: employees,
+    yogen_payroll_payments: payrollPayments,
     yogen_salary_slips: salarySlips,
     yogen_exit_records: exitRecords,
     yogen_attendance: attendance,
@@ -581,6 +593,10 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem("yogen_employees", JSON.stringify(employees));
   }, [employees]);
+
+  useEffect(() => {
+    localStorage.setItem("yogen_payroll_payments", JSON.stringify(payrollPayments));
+  }, [payrollPayments]);
 
   useEffect(() => {
     localStorage.setItem("yogen_salary_slips", JSON.stringify(salarySlips));
@@ -612,6 +628,7 @@ export default function App() {
         const remoteData = await loadOfficeData();
         const modules = [
           ["yogen_employees", setEmployees],
+          ["yogen_payroll_payments", setPayrollPayments],
           ["yogen_salary_slips", setSalarySlips],
           ["yogen_exit_records", setExitRecords],
           ["yogen_attendance", setAttendance],
@@ -653,6 +670,15 @@ export default function App() {
       setDatabaseStatus("offline");
     });
   }, [employees, databaseReady]);
+
+  useEffect(() => {
+    if (!databaseReady) return;
+
+    saveOfficeData("yogen_payroll_payments", payrollPayments).catch((error) => {
+      console.error("Could not sync payroll payments to MongoDB:", error);
+      setDatabaseStatus("offline");
+    });
+  }, [payrollPayments, databaseReady]);
 
   useEffect(() => {
     if (!databaseReady) return;
@@ -702,6 +728,53 @@ export default function App() {
   const employeePayroll = employees.reduce(
     (sum, employee) => sum + Number(employee.salary || 0),
     0,
+  );
+  const monthPayrollPayments = payrollPayments.filter(
+    (payment) => payment.month === payrollMonth,
+  );
+  const payrollRows = employees.map((employee) => {
+    const employeePayments = monthPayrollPayments.filter(
+      (payment) => String(payment.employeeId) === String(employee.id),
+    );
+    const salarySnapshot = employeePayments.find(
+      (payment) => Number.isFinite(Number(payment.monthlySalary)),
+    )?.monthlySalary;
+    const salaryDue = Number(salarySnapshot ?? employee.salary ?? 0);
+    const paidAmount = employeePayments.reduce(
+      (total, payment) => total + Number(payment.amount || 0),
+      0,
+    );
+    const remainingAmount = Math.max(0, salaryDue - paidAmount);
+    const status =
+      paidAmount >= salaryDue && salaryDue > 0
+        ? "Paid"
+        : paidAmount > 0
+          ? "Partially Paid"
+          : "Unpaid";
+
+    return {
+      employee,
+      employeePayments,
+      salaryDue,
+      paidAmount,
+      remainingAmount,
+      status,
+      lastPaymentDate: [...employeePayments]
+        .sort((first, second) => (second.date || "").localeCompare(first.date || ""))[0]?.date || "",
+    };
+  });
+  const payrollPaidEmployeeCount = payrollRows.filter(
+    (row) => row.status === "Paid",
+  ).length;
+  const payrollUnpaidEmployeeCount = payrollRows.filter(
+    (row) => row.status === "Unpaid",
+  ).length;
+  const payrollPaidTotal = monthPayrollPayments.reduce(
+    (total, payment) => total + Number(payment.amount || 0),
+    0,
+  );
+  const selectedPayrollRow = payrollRows.find(
+    (row) => String(row.employee.id) === payrollPaymentEmployeeId,
   );
   const salarySlipGrossPreview = [
     "basicSalary",
@@ -1326,6 +1399,56 @@ export default function App() {
     }
   }
 
+  function openPayrollPayment(row) {
+    setPayrollPaymentEmployeeId(String(row.employee.id));
+    setPayrollPaymentAmount(String(row.remainingAmount));
+    setPayrollPaymentDate(`${payrollMonth}-15`);
+    setPayrollPaymentMethod("Bank Transfer");
+    setPayrollPaymentReference("");
+  }
+
+  function recordPayrollPayment(event) {
+    event.preventDefault();
+    const row = payrollRows.find(
+      (item) => String(item.employee.id) === payrollPaymentEmployeeId,
+    );
+    const amount = Number(payrollPaymentAmount);
+
+    if (!row || !payrollPaymentDate || !payrollPaymentMethod) {
+      alert("Employee, payment date aur payment method select karein.");
+      return;
+    }
+
+    if (
+      !Number.isFinite(amount) ||
+      amount <= 0 ||
+      amount > row.remainingAmount
+    ) {
+      alert(
+        `Payment amount 0 se zyada aur remaining salary (${formatMoney(row.remainingAmount)}) se kam ya barabar honi chahiye.`,
+      );
+      return;
+    }
+
+    const payment = {
+      id: `${row.employee.id}-${payrollMonth}-${row.employeePayments.length + 1}`,
+      employeeId: row.employee.id,
+      employeeName: row.employee.name,
+      month: payrollMonth,
+      monthlySalary: row.salaryDue,
+      amount,
+      date: payrollPaymentDate,
+      method: payrollPaymentMethod,
+      reference: payrollPaymentReference.trim(),
+      recordedAt: new Date().toISOString(),
+    };
+
+    setPayrollPayments((previous) => [payment, ...previous]);
+    setPayrollPaymentEmployeeId("");
+    setPayrollPaymentAmount("");
+    setPayrollPaymentReference("");
+  }
+
   function updateAttendance(employeeId, status) {
     setAttendance((previous) => {
       const currentDay = { ...(previous[attendanceDate] || {}) };
@@ -1654,6 +1777,7 @@ export default function App() {
       await readApiResponse(response);
       for (const key of [
         "yogen_employees",
+        "yogen_payroll_payments",
         "yogen_salary_slips",
         "yogen_exit_records",
         "yogen_attendance",
@@ -2324,6 +2448,202 @@ export default function App() {
                 icon="👥"
                 onClick={() => setActivePage("Employees")}
               />
+            </div>
+            <div className="payroll-payment-summary">
+              <StatCard
+                title="Fully Paid Employees"
+                value={`${payrollPaidEmployeeCount} / ${payrollRows.length}`}
+                icon="✅"
+              />
+              <StatCard
+                title="Partially Paid"
+                value={payrollRows.filter((row) => row.status === "Partially Paid").length}
+                icon="🟡"
+              />
+              <StatCard
+                title="Unpaid Employees"
+                value={payrollUnpaidEmployeeCount}
+                icon="⏳"
+              />
+              <StatCard
+                title="Paid This Month"
+                value={formatMoney(payrollPaidTotal)}
+                icon="💸"
+              />
+            </div>
+            <div className="panel" id="payroll-payment-tracker">
+              <div className="panel-header">
+                <div>
+                  <h3>Monthly Salary Payments</h3>
+                  <p>Record salary paid, date, method aur remaining unpaid amount.</p>
+                </div>
+                <label className="payroll-month-control">
+                  Salary month
+                  <input
+                    type="month"
+                    value={payrollMonth}
+                    onChange={(event) => {
+                      setPayrollMonth(event.target.value);
+                      setPayrollPaymentEmployeeId("");
+                      setPayrollPaymentAmount("");
+                    }}
+                  />
+                </label>
+              </div>
+              {payrollPaymentEmployeeId && selectedPayrollRow && (
+                <form
+                  className="employee-form payroll-payment-form"
+                  onSubmit={recordPayrollPayment}
+                  id="payroll-payment-form"
+                >
+                  <div className="payroll-form-heading">
+                    <strong>Record payment for {selectedPayrollRow.employee.name}</strong>
+                    <span>
+                      Remaining: {formatMoney(selectedPayrollRow.remainingAmount)}
+                    </span>
+                  </div>
+                  <label>
+                    Amount paid (₹)
+                    <input
+                      type="number"
+                      min="0.01"
+                      max={selectedPayrollRow.remainingAmount}
+                      step="0.01"
+                      value={payrollPaymentAmount}
+                      onChange={(event) => setPayrollPaymentAmount(event.target.value)}
+                      required
+                    />
+                  </label>
+                  <label>
+                    Payment date
+                    <input
+                      type="date"
+                      value={payrollPaymentDate}
+                      onChange={(event) => setPayrollPaymentDate(event.target.value)}
+                      required
+                    />
+                  </label>
+                  <label>
+                    Payment method
+                    <select
+                      value={payrollPaymentMethod}
+                      onChange={(event) => setPayrollPaymentMethod(event.target.value)}
+                      required
+                    >
+                      <option>Bank Transfer</option>
+                      <option>UPI</option>
+                      <option>Cash</option>
+                      <option>Cheque</option>
+                      <option>Other</option>
+                    </select>
+                  </label>
+                  <label>
+                    Transaction reference (optional)
+                    <input
+                      value={payrollPaymentReference}
+                      onChange={(event) => setPayrollPaymentReference(event.target.value)}
+                      placeholder="UTR / transaction ID"
+                    />
+                  </label>
+                  <div className="payroll-form-actions">
+                    <button className="primary-button" type="submit">
+                      Save Payment
+                    </button>
+                    <button
+                      className="secondary-button"
+                      type="button"
+                      onClick={() => {
+                        setPayrollPaymentEmployeeId("");
+                        setPayrollPaymentAmount("");
+                      }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </form>
+              )}
+              <div className="table-wrapper">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Employee</th>
+                      <th>Monthly Salary</th>
+                      <th>Paid</th>
+                      <th>Remaining</th>
+                      <th>Status</th>
+                      <th>Last Paid</th>
+                      <th>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {payrollRows.map((row) => (
+                      <tr key={row.employee.id}>
+                        <td><strong>{row.employee.name}</strong></td>
+                        <td>{formatMoney(row.salaryDue)}</td>
+                        <td>{formatMoney(row.paidAmount)}</td>
+                        <td>{formatMoney(row.remainingAmount)}</td>
+                        <td>
+                          <span className={`payroll-status-badge ${row.status.toLowerCase().replaceAll(" ", "-")}`}>
+                            {row.status}
+                          </span>
+                        </td>
+                        <td>{row.lastPaymentDate || "—"}</td>
+                        <td>
+                          {row.remainingAmount > 0 ? (
+                            <button
+                              className="primary-button"
+                              type="button"
+                              onClick={() => openPayrollPayment(row)}
+                            >
+                              {row.paidAmount > 0 ? "Add Payment" : "Record Payment"}
+                            </button>
+                          ) : (
+                            <span>Complete</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                    {!payrollRows.length && (
+                      <tr><td colSpan="7">No employees to include in payroll.</td></tr>
+                    )}
+                    {payrollRows.length > 0 && (
+                      <tr className="payroll-total-row">
+                        <td><strong>Total</strong></td>
+                        <td><strong>{formatMoney(payrollRows.reduce((sum, row) => sum + row.salaryDue, 0))}</strong></td>
+                        <td><strong>{formatMoney(payrollPaidTotal)}</strong></td>
+                        <td><strong>{formatMoney(payrollRows.reduce((sum, row) => sum + row.remainingAmount, 0))}</strong></td>
+                        <td colSpan="3" />
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+              <div className="payroll-payment-history">
+                <h4>{formatSalaryMonth(payrollMonth)} Payment History</h4>
+                <div className="table-wrapper">
+                  <table>
+                    <thead>
+                      <tr><th>Payment Date</th><th>Employee</th><th>Amount</th><th>Method</th><th>Reference</th></tr>
+                    </thead>
+                    <tbody>
+                      {[...monthPayrollPayments]
+                        .sort((first, second) => (second.date || "").localeCompare(first.date || ""))
+                        .map((payment) => (
+                          <tr key={payment.id}>
+                            <td>{payment.date}</td>
+                            <td>{payment.employeeName}</td>
+                            <td>{formatMoney(payment.amount)}</td>
+                            <td>{payment.method}</td>
+                            <td>{payment.reference || "—"}</td>
+                          </tr>
+                        ))}
+                      {!monthPayrollPayments.length && (
+                        <tr><td colSpan="5">Is month ke salary payments abhi record nahi hue.</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             </div>
             <div className="panel" id="salary-overview">
               <div className="panel-header">

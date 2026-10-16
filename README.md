@@ -19,6 +19,8 @@ Forgot-password and forgot-email screens currently report that account recovery 
 
 Use **Salary Slips** to select an employee and month, enter the earning and deduction components, paid/LOP days, and employee details, then save the slip and print it or choose **Save as PDF** in the browser print dialog. The payslip uses the Yogen logo and shows the employee-pay summary, net pay, earnings, deductions, and totals. YTD columns remain blank until cumulative year-to-date payroll data is available. A saved slip captures the employee and pay details for that month; saving again for the same employee and month updates that slip.
 
+Use **Salary & Payroll** → **Monthly Salary Payments** to choose a month, record full or partial salary payments, and review each employee's paid, remaining, and unpaid amount. Payment date defaults to the 15th of the selected month and can be changed. Each entry retains payment method and optional transaction reference, and is stored separately from the salary slip.
+
 Use **Resignation & Exit** to save resignation and last-working dates, notice period, settlement amount, and signatory details. The saved record can generate a resignation acceptance letter, relieving letter, experience certificate, and full-and-final settlement statement. Review the entered details and applicable company/legal requirements before issuing a document. Saving exit details does not delete or change the employee record or payroll automatically.
 
-Salary slips and exit records are stored separately from the existing employee data and sync to MongoDB when it is available. If MongoDB is offline, changes remain in the current browser's local storage.
+Salary payment records, salary slips, and exit records are stored separately from the existing employee data and sync to MongoDB when it is available. If MongoDB is offline, changes remain in the current browser's local storage.
